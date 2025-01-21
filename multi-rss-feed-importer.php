@@ -19,7 +19,7 @@ require 'utils/plugin-update-checker/plugin-update-checker.php';
 use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
 
 $updateChecker = PucFactory::buildUpdateChecker(
-    'https://github.com/hawaii-dev/multi-rss-feed-importer',
+    'https://github.com/Hawaii-Interactive-CH/multi-rss-feed-importer',
     __FILE__,
     'multi-rss-feed-importer'
 );
