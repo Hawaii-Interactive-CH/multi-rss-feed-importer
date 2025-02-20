@@ -110,6 +110,7 @@ class FeedLoader
 
         $items = [];
         foreach ($rss->channel->item as $item) {
+            $site_title = (string) $rss->channel->title;
             $title = (string) $item->title;
             $link = (string) $item->link;
             $description = (string) $item->description;
@@ -133,7 +134,7 @@ class FeedLoader
                 continue;
             }
 
-            $items[] = compact('title', 'link', 'description', 'pubDate', 'guid', 'url');
+            $items[] = compact('title', 'link', 'description', 'pubDate', 'guid', 'url', 'site_title');
         }
 
         Logger::log_message("Fetched " . count($items) . " items from feed: {$this->url}");
@@ -183,7 +184,9 @@ class FeedLoader
                     'post_date' => date('Y-m-d H:i:s', strtotime($item['pubDate']) ?? current_time('mysql')),
                 ]);
 
-
+                update_post_meta($post_id, '_rss_imported_link', $item['url']);
+                update_post_meta($post_id, '_rss_imported_site_title', $item['site_title']);
+                update_post_meta($post_id, '_rss_imported_url', esc_url_raw($item['guid']));
                 Logger::log_message("{$postType} updated with ID {$post_id} for URL: {$item['guid']}");
                 return true;
             }
@@ -200,6 +203,7 @@ class FeedLoader
             if ($post_id) {
                 add_post_meta($post_id, '_rss_imported_url', esc_url_raw($item['guid']));
                 add_post_meta($post_id, '_rss_imported_link', $item['url']);
+                add_post_meta($post_id, '_rss_imported_site_title', $item['site_title']);
                 Logger::log_message("{$postType} created with ID {$post_id} for URL: {$item['guid']}");
             } else {
                 throw new Exception("Failed to insert post for URL: {$item['guid']}");
