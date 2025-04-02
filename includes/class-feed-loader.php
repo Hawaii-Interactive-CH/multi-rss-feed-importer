@@ -184,9 +184,10 @@ class FeedLoader
                     'post_date' => date('Y-m-d H:i:s', strtotime($item['pubDate']) ?? current_time('mysql')),
                 ]);
 
-                update_post_meta($post_id, '_rss_imported_link', $item['url']);
+                update_post_meta($post_id, '_rss_imported_link', $item['link']);
                 update_post_meta($post_id, '_rss_imported_site_title', $item['site_title']);
-                update_post_meta($post_id, '_rss_imported_url', esc_url_raw($item['guid']));
+                update_post_meta($post_id, '_rss_imported_url', esc_url_raw($item['url']));
+                update_post_meta($post_id, '_rss_imported_guid', esc_url_raw($item['guid']));
                 Logger::log_message("{$postType} updated with ID {$post_id} for URL: {$item['guid']}");
                 return true;
             }
@@ -201,8 +202,9 @@ class FeedLoader
             ]);
 
             if ($post_id) {
-                add_post_meta($post_id, '_rss_imported_url', esc_url_raw($item['guid']));
-                add_post_meta($post_id, '_rss_imported_link', $item['url']);
+                add_post_meta($post_id, '_rss_imported_url', esc_url_raw($item['url']));
+                add_post_meta($post_id, '_rss_imported_link', $item['link']);
+                add_post_meta($post_id, '_rss_imported_guid', esc_url_raw($item['guid']));
                 add_post_meta($post_id, '_rss_imported_site_title', $item['site_title']);
                 Logger::log_message("{$postType} created with ID {$post_id} for URL: {$item['guid']}");
             } else {
