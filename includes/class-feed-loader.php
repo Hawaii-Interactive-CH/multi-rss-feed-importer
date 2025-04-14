@@ -29,9 +29,9 @@ class FeedLoader
             return; // No limit to enforce
         }
 
-        // Query posts for the specific feed
+        // Query posts for the specific feed using our custom URL matching
         $query = new WP_Query([
-            'meta_key' => '_rss_imported_link',
+            'meta_key' => '_rss_imported_url',
             'meta_value' => $link,
             'posts_per_page' => -1,
             'orderby' => 'post_date',
@@ -62,6 +62,9 @@ class FeedLoader
      */
     public function import_posts($postType = 'post')
     {
+        // Migrate existing posts to use the new custom ID
+        $this->migrate_existing_posts($postType);
+        
         $feedData = $this->fetch_feed_data();
 
         if (!$feedData) {
@@ -73,7 +76,51 @@ class FeedLoader
             $this->create_post_from_item($item, $postType);
         }
 
+        // Enforce post limit after importing all posts
+        $limit = intval(get_option('rss_importer_feed_limits', 0));
+        $this->enforce_post_limit($this->url, $limit);
+
         return true;
+    }
+
+    /**
+     * Migrate existing imported posts to use the new custom ID
+     *
+     * @param string $postType The post type to migrate
+     * @return void
+     */
+    private function migrate_existing_posts($postType)
+    {
+        // Get all imported posts that don't have the custom ID yet
+        $existing_posts = get_posts([
+            'post_type' => $postType,
+            'meta_key' => '_rss_imported_url',
+            'posts_per_page' => -1,
+            'meta_query' => [
+                [
+                    'key' => '_rss_imported_custom_id',
+                    'compare' => 'NOT EXISTS'
+                ]
+            ]
+        ]);
+
+        if (empty($existing_posts)) {
+            return;
+        }
+
+        Logger::log_message("Migrating " . count($existing_posts) . " existing posts to use custom ID");
+
+        foreach ($existing_posts as $post) {
+            $post_id = $post->ID;
+            $url = get_post_meta($post_id, '_rss_imported_url', true);
+            $guid = get_post_meta($post_id, '_rss_imported_guid', true);
+            
+            if (!empty($url) && !empty($guid)) {
+                $custom_id = md5($url . '|' . $guid);
+                add_post_meta($post_id, '_rss_imported_custom_id', $custom_id);
+                Logger::log_message("Added custom ID to post {$post_id}");
+            }
+        }
     }
 
     /**
@@ -91,9 +138,6 @@ class FeedLoader
         }
 
         $limit = intval(get_option('rss_importer_feed_limits', 0));
-
-        // Enforce the post limit after importing
-        $this->enforce_post_limit($this->url, $limit);
 
         if (wp_remote_retrieve_response_code($response) !== 200) {
             Logger::log_message("Failed to fetch RSS feed: {$this->url} with HTTP code " . wp_remote_retrieve_response_code($response));
@@ -117,9 +161,6 @@ class FeedLoader
             $pubDate = (string) $item->pubDate;
             $guid = (string) $item->guid;
             $url = $this->url;
-
-            // Log each item's raw content for debugging
-            error_log("Raw Item: " . print_r($item, true));
 
             // Check for required fields
             if (empty($title) || empty($guid) || empty($link)) {
@@ -164,11 +205,14 @@ class FeedLoader
                 return false;
             }
 
-            // Check if the post already exists
+            // Create a unique custom ID by combining feed URL and guid
+            $custom_id = md5($item['url'] . '|' . $item['guid']);
+
+            // Check if the post already exists using our custom ID
             $existing_post = get_posts([
                 'post_type' => $postType,
-                'meta_key' => '_rss_imported_url',
-                'meta_value' => $item['guid'],
+                'meta_key' => '_rss_imported_custom_id',
+                'meta_value' => $custom_id,
                 'posts_per_page' => 1
             ]);
 
@@ -188,6 +232,7 @@ class FeedLoader
                 update_post_meta($post_id, '_rss_imported_site_title', $item['site_title']);
                 update_post_meta($post_id, '_rss_imported_url', esc_url_raw($item['url']));
                 update_post_meta($post_id, '_rss_imported_guid', esc_url_raw($item['guid']));
+                update_post_meta($post_id, '_rss_imported_custom_id', $custom_id);
                 Logger::log_message("{$postType} updated with ID {$post_id} for URL: {$item['guid']}");
                 return true;
             }
@@ -206,6 +251,7 @@ class FeedLoader
                 add_post_meta($post_id, '_rss_imported_link', $item['link']);
                 add_post_meta($post_id, '_rss_imported_guid', esc_url_raw($item['guid']));
                 add_post_meta($post_id, '_rss_imported_site_title', $item['site_title']);
+                add_post_meta($post_id, '_rss_imported_custom_id', $custom_id);
                 Logger::log_message("{$postType} created with ID {$post_id} for URL: {$item['guid']}");
             } else {
                 throw new Exception("Failed to insert post for URL: {$item['guid']}");
